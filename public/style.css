@@ -506,32 +506,6 @@ body.admin .check { display: flex; align-self: center; margin-top: 0; margin-bot
 .send:active:not(:disabled) { transform: scale(.9); }
 .send:disabled { background: var(--fill); color: var(--cell); }
 
-/* ---------- HUD ---------- */
-
-.hud {
-  position: fixed;
-  left: 50%; top: 42%;
-  z-index: 200;
-  width: 152px;
-  padding: 22px 12px 18px;
-  border-radius: 16px;
-  background: var(--hud);
-  -webkit-backdrop-filter: saturate(180%) blur(24px);
-  backdrop-filter: saturate(180%) blur(24px);
-  color: var(--label2);
-  text-align: center;
-  font-size: 15px;
-  line-height: 20px;
-  font-weight: 600;
-  letter-spacing: -.24px;
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(.9);
-  transition: opacity .2s, transform .25s var(--ease);
-  pointer-events: none;
-}
-.hud.show { opacity: 1; transform: translate(-50%, -50%); }
-.hud svg { display: block; width: 48px; height: 48px; margin: 0 auto 8px; }
-
 /* ---------- Overlays: Action Sheet, Alert, Formular-Sheet ---------- */
 
 .overlay {

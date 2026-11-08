@@ -32,7 +32,7 @@ const els = {
   loading: $('#loading'), sectionHeader: $('#sectionHeader'), segmented: $('#segmented'),
   countOpen: $('#countOpen'), countDone: $('#countDone'), sortBtn: $('#sortBtn'), adminBtn: $('#adminBtn'), inboxBtn: $('#inboxBtn'), inboxBadge: $('#inboxBadge'),
   adminBanner: $('#adminBanner'), offline: $('#offline'), largeTitle: $('#largeTitle'),
-  composer: $('#composer'), input: $('#input'), send: $('#send'), counter: $('#counter'), hud: $('#hud'),
+  composer: $('#composer'), input: $('#input'), send: $('#send'), counter: $('#counter'),
 };
 
 const store = {
@@ -615,11 +615,10 @@ function openInbox() {
   setTimeout(() => o.querySelector('[data-done]').focus({ preventScroll: true }), 60);
 }
 
-async function adminWrite(changes, okText, errTitle, button) {
+async function adminWrite(changes, errTitle, button) {
   if (button) button.disabled = true;
   try {
     await update(ref(db), changes);
-    hud(okText);
   } catch (err) {
     if (button) button.disabled = false;
     adminError(err, errTitle);
@@ -627,26 +626,26 @@ async function adminWrite(changes, okText, errTitle, button) {
 }
 
 function acceptRequest(r, button) {
-  adminWrite({ [`ersteller/${r.uid}`]: r.email, [`anfragen/${r.uid}`]: null }, 'Freigeschaltet', 'Nicht freigeschaltet', button);
+  adminWrite({ [`ersteller/${r.uid}`]: r.email, [`anfragen/${r.uid}`]: null }, 'Nicht freigeschaltet', button);
 }
 
 function rejectRequest(r, button) {
-  adminWrite({ [`anfragen/${r.uid}`]: null }, 'Abgelehnt', 'Nicht abgelehnt', button);
+  adminWrite({ [`anfragen/${r.uid}`]: null }, 'Nicht abgelehnt', button);
 }
 
 function blockRequest(r, button) {
   const entry = { email: r.email, zeit: serverTimestamp() };
   if (r.name) entry.name = r.name;
-  adminWrite({ [`gesperrt/${r.uid}`]: entry, [`anfragen/${r.uid}`]: null }, 'Gesperrt', 'Nicht gesperrt', button);
+  adminWrite({ [`gesperrt/${r.uid}`]: entry, [`anfragen/${r.uid}`]: null }, 'Nicht gesperrt', button);
 }
 
 function unblock(r, button) {
-  adminWrite({ [`gesperrt/${r.uid}`]: null }, 'Entsperrt', 'Nicht entsperrt', button);
+  adminWrite({ [`gesperrt/${r.uid}`]: null }, 'Nicht entsperrt', button);
 }
 
 async function logout() {
   try { await signOut(auth); } catch { /* egal */ }
-  hud('Abgemeldet'); // danach meldet onAuthStateChanged wieder anonym an
+  // danach meldet onAuthStateChanged wieder anonym an
 }
 
 async function adminError(err, title) {
@@ -671,7 +670,6 @@ async function setAnswered(id, answered) {
   await leaveAnimation(id);
   try {
     const p = update(ref(db, 'fragen/' + id), { beantwortet: answered, beantwortetAm: answered ? serverTimestamp() : null });
-    hud(answered ? 'Beantwortet' : 'Wieder offen');
     await p;
   } catch (err) {
     adminError(err, 'Nicht gespeichert');
@@ -709,7 +707,6 @@ async function login() {
   }
   const ok = await checkAdmin(user);
   if (ok) {
-    hud('Angemeldet');
     return; // onAuthStateChanged schaltet den Ersteller-Modus ein
   }
   if (ok === null) {
@@ -841,13 +838,6 @@ function showAlert(title, message, buttons = [{ label: 'OK', value: true, bold: 
   });
 }
 
-let hudTimer = null;
-function hud(text) {
-  els.hud.querySelector('.hud-text').textContent = text;
-  els.hud.classList.add('show');
-  clearTimeout(hudTimer);
-  hudTimer = setTimeout(() => els.hud.classList.remove('show'), 1300);
-}
 
 // ---------------------------------------------------------------- Start
 
