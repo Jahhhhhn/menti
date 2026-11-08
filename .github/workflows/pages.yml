@@ -22,6 +22,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Versionsnummer anhängen (damit Browser nach dem Veröffentlichen nichts Altes laden)
+        run: |
+          v="${GITHUB_SHA::8}"
+          sed -i "s#src=\"app.js\"#src=\"app.js?v=$v\"#; s#href=\"style.css\"#href=\"style.css?v=$v\"#" public/index.html
+          sed -i "s#from './firebase-config.js'#from './firebase-config.js?v=$v'#" public/app.js
+          grep -q "app.js?v=$v" public/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
