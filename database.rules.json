@@ -3,7 +3,7 @@
     "fragen": {
       ".read": true,
       "$id": {
-        ".write": "auth != null && (root.child('ersteller').child(auth.uid).exists() || (!data.exists() && newData.exists() && newData.parent().parent().child('zuletzt').child(auth.uid).val() === now))",
+        ".write": "auth != null && (root.child('ersteller').child(auth.uid).exists() || (!data.exists() && newData.exists() && newData.parent().parent().child('zuletzt').child(auth.uid).val() === now) || (data.exists() && !newData.exists() && root.child('autoren').child($id).val() === auth.uid))",
         ".validate": "newData.hasChildren(['text', 'erstellt', 'beantwortet', 'likes']) && (data.exists() || !newData.hasChild('beantwortetAm'))",
         "text": {
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 600 && (!data.exists() || newData.val() === data.val())"
@@ -24,6 +24,12 @@
         "$other": {
           ".validate": false
         }
+      }
+    },
+    "autoren": {
+      "$id": {
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid && !root.child('fragen').child($id).exists() && newData.parent().parent().child('fragen').child($id).exists()) || (!newData.exists() && (data.val() === auth.uid || root.child('ersteller').child(auth.uid).exists())))",
+        ".validate": "newData.isString()"
       }
     },
     "likes": {

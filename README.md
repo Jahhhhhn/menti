@@ -24,12 +24,13 @@ Gestaltet nach den Apple Human Interface Guidelines (Systemschrift, Systemfarben
 - Noch nicht freigeschaltete Konten schicken damit automatisch eine **Anfrage** (Name + E-Mail) und werden
   gleich wieder abgemeldet.
 - Ersteller sehen oben rechts das **Postfach** (rote Zahl = offene Anfragen):
-  - Reiter **Anfragen**: **Akzeptieren** oder **Ablehnen** (dabei wahlweise „Ablehnen und sperren“).
+  - Reiter **Anfragen**: **Annehmen**, **Ablehnen** oder **Sperren** – ohne Rückfrage.
     Akzeptierte Konten stehen unter `ersteller/{kennung}`.
   - Reiter **Gesperrt**: gesperrte Konten (`gesperrt/{kennung}`) mit **Entsperren**. Gesperrte Konten können
     keine Anfragen stellen.
 - Entziehen: Firebase-Konsole → Realtime Database → Daten → `ersteller` → Eintrag löschen.
-- Im Ersteller-Modus: Kreis links tippen = beantwortet / wieder offen; Frage tippen = Menü mit „Löschen“.
+- Im Ersteller-Modus: Kreis links tippen = beantwortet / wieder offen; „Löschen“ bei jeder Frage (sofort, ohne Rückfrage).
+- Besucher können ihre **eigenen Fragen** löschen („Löschen“ neben „Deine Frage“).
 
 ## Daten & Anonymität
 
@@ -37,7 +38,8 @@ Gestaltet nach den Apple Human Interface Guidelines (Systemschrift, Systemfarben
 - Besucher werden unsichtbar **anonym** bei Firebase angemeldet (zufällige Kennung, keine Namen).
   `likes/{kennung}` (wer was geliked hat) und `zuletzt/{kennung}` (Zeit der letzten Frage) kann nur das
   jeweilige Gerät selbst lesen.
-- „Deine Frage“ merkt sich nur der eigene Browser.
+- „Deine Frage“ merkt sich nur der eigene Browser. Damit nur der Fragende selbst löschen kann, steht unter
+  `autoren/{frage}` die anonyme Kennung – das ist für niemanden lesbar (nur in der Firebase-Konsole sichtbar).
 - Die Regeln sorgen dafür: höchstens eine Frage alle 5 s pro Gerät, ein Like pro Gerät und Frage, Fragen
   lassen sich nachträglich nicht ändern; beantworten und löschen dürfen nur Ersteller.
 - `anfragen/` und `gesperrt/` (E-Mail-Adressen) können nur Ersteller lesen.

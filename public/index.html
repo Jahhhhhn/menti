@@ -49,7 +49,7 @@
 
     <div class="banner admin-banner" id="adminBanner" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 5.8v5.4c0 4.4 3 8.3 7 9.8 4-1.5 7-5.4 7-9.8V5.8L12 3z" fill="currentColor"/></svg>
-      <span>Ersteller-Modus · Kreis tippen = beantwortet, Frage tippen = mehr</span>
+      <span>Ersteller-Modus · Kreis tippen = beantwortet</span>
     </div>
     <div class="banner offline-banner" id="offline" hidden>
       <span>Keine Verbindung – neuer Versuch läuft …</span>
@@ -66,15 +66,12 @@
       <p class="empty-text" id="emptyText"></p>
     </div>
 
-    <footer class="footer">
-      <p>Fragen sind anonym – es werden keine Namen gespeichert.</p>
-    </footer>
   </main>
 
   <form class="composer" id="composer" autocomplete="off">
     <div class="composer-inner">
       <div class="field">
-        <textarea id="input" rows="1" maxlength="300" placeholder="Anonym eine Frage stellen" aria-label="Deine Frage" enterkeyhint="send"></textarea>
+        <textarea id="input" rows="1" maxlength="300" placeholder="Frage stellen" aria-label="Deine Frage" enterkeyhint="send"></textarea>
         <span class="counter" id="counter" aria-live="polite"></span>
         <button class="send" id="send" type="submit" aria-label="Frage senden" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18.5V6M6.5 11.3 12 5.8l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>

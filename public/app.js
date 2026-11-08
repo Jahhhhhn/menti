@@ -237,7 +237,7 @@ function render({ animate = false } = {}) {
     els.sectionHeader.textContent = n ? `${n} ${n === 1 ? 'offene Frage' : 'offene Fragen'} · ${state.sort === 'top' ? 'beliebteste zuerst' : 'neueste zuerst'}` : '';
     els.emptyIcon.innerHTML = ICON.bubble;
     els.emptyTitle.textContent = 'Keine offenen Fragen';
-    els.emptyText.textContent = doneCount ? 'Alle Fragen sind beantwortet. Stell gern eine neue!' : 'Stell die erste Frage – ganz anonym.';
+    els.emptyText.textContent = doneCount ? 'Alle Fragen sind beantwortet. Stell gern eine neue!' : 'Stell die erste Frage.';
   } else {
     els.sectionHeader.textContent = n ? `${n} beantwortet · zuletzt beantwortet zuerst` : '';
     els.emptyIcon.innerHTML = ICON.done;
@@ -260,10 +260,6 @@ function createCell(id) {
     e.stopPropagation();
     const q = find(id);
     if (q) setAnswered(id, !q.answered);
-  });
-  el.addEventListener('click', () => { if (isAdmin()) adminMenu(id); });
-  el.addEventListener('keydown', (e) => {
-    if (isAdmin() && e.target === el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); adminMenu(id); }
   });
   return el;
 }
@@ -289,6 +285,15 @@ function updateCell(el, q) {
   const t = document.createElement('span');
   t.textContent = relTime(q.answered ? q.answeredAt : q.created);
   meta.append(t);
+  if (q.own || isAdmin()) {
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'q-del';
+    del.textContent = 'Löschen';
+    del.setAttribute('aria-label', 'Frage löschen');
+    del.addEventListener('click', (e) => { e.stopPropagation(); deleteQuestion(q.id); });
+    meta.append(del);
+  }
 
   const like = el.querySelector('.like');
   like.classList.toggle('liked', q.liked);
@@ -299,7 +304,6 @@ function updateCell(el, q) {
   const check = el.querySelector('.check');
   check.setAttribute('aria-label', q.answered ? 'Wieder als offen markieren' : 'Als beantwortet markieren');
   el.classList.toggle('answered', q.answered);
-  el.tabIndex = isAdmin() ? 0 : -1;
 }
 
 function refreshTimes() {
@@ -428,6 +432,7 @@ els.composer.addEventListener('submit', async (e) => {
   try {
     const p = update(ref(db), {
       [`fragen/${id}`]: { text, erstellt: serverTimestamp(), beantwortet: false, likes: 0 },
+      [`autoren/${id}`]: state.user.uid, // nicht lesbar – nur damit die Regeln eigenes Löschen erlauben
       [`zuletzt/${state.user.uid}`]: serverTimestamp(),
     });
     // Die Frage erscheint sofort (lokal), der Server bestätigt im Hintergrund.
@@ -475,7 +480,7 @@ function applyAdmin() {
   els.adminBanner.hidden = !isAdmin();
   els.adminBtn.textContent = isGoogle() ? 'Abmelden' : 'Erstellerzugang';
   els.inboxBtn.hidden = !isAdmin();
-  for (const el of nodes.values()) el.tabIndex = isAdmin() ? 0 : -1;
+  refreshTimes(); // Löschen-Knöpfe ein-/ausblenden
   watchRequests();
 }
 
@@ -590,13 +595,14 @@ function openInbox() {
     counts[1].textContent = state.blocked.length || '';
     if (tab === 'requests') {
       list.replaceChildren(...state.requests.map((r) => personRow(r, relTime(r.time), [
-        pill('Ablehnen', 'reject', `${r.email} ablehnen`, () => rejectRequest(r)),
-        pill('Akzeptieren', 'accept', `${r.email} akzeptieren`, (b) => acceptRequest(r, b)),
+        pill('Ablehnen', 'reject', `${r.email} ablehnen`, (b) => rejectRequest(r, b)),
+        pill('Sperren', 'reject', `${r.email} sperren`, (b) => blockRequest(r, b)),
+        pill('Annehmen', 'accept', `${r.email} annehmen`, (b) => acceptRequest(r, b)),
       ])));
       empty.textContent = 'Keine offenen Anfragen.';
       empty.hidden = state.requests.length > 0;
-      footer.textContent = 'Wer sich über „Erstellerzugang“ mit Google anmeldet, landet hier. Akzeptierte Konten '
-        + 'können Fragen beantworten und löschen – und selbst Anfragen annehmen.';
+      footer.textContent = 'Wer sich über „Erstellerzugang“ mit Google anmeldet, landet hier. Angenommene Konten '
+        + 'können Fragen beantworten und löschen – und selbst Anfragen annehmen. Gesperrte können nicht mehr anfragen.';
     } else {
       list.replaceChildren(...state.blocked.map((r) => personRow(r, 'gesperrt ' + relTime(r.time), [
         pill('Entsperren', '', `${r.email} entsperren`, (b) => unblock(r, b)),
@@ -625,21 +631,14 @@ function acceptRequest(r, button) {
   adminWrite({ [`ersteller/${r.uid}`]: r.email, [`anfragen/${r.uid}`]: null }, 'Freigeschaltet', 'Nicht freigeschaltet', button);
 }
 
-async function rejectRequest(r) {
-  const v = await actionSheet({
-    title: r.name ? `${r.name} (${r.email})` : r.email,
-    message: 'Beim Sperren kann dieses Konto keine neuen Anfragen mehr stellen.',
-    actions: [
-      { label: 'Nur ablehnen', value: 'reject' },
-      { label: 'Ablehnen und sperren', value: 'block', destructive: true },
-    ],
-  });
-  if (v === 'reject') adminWrite({ [`anfragen/${r.uid}`]: null }, 'Abgelehnt', 'Nicht abgelehnt');
-  if (v === 'block') {
-    const entry = { email: r.email, zeit: serverTimestamp() };
-    if (r.name) entry.name = r.name;
-    adminWrite({ [`gesperrt/${r.uid}`]: entry, [`anfragen/${r.uid}`]: null }, 'Gesperrt', 'Nicht gesperrt');
-  }
+function rejectRequest(r, button) {
+  adminWrite({ [`anfragen/${r.uid}`]: null }, 'Abgelehnt', 'Nicht abgelehnt', button);
+}
+
+function blockRequest(r, button) {
+  const entry = { email: r.email, zeit: serverTimestamp() };
+  if (r.name) entry.name = r.name;
+  adminWrite({ [`gesperrt/${r.uid}`]: entry, [`anfragen/${r.uid}`]: null }, 'Gesperrt', 'Nicht gesperrt', button);
 }
 
 function unblock(r, button) {
@@ -683,31 +682,12 @@ async function setAnswered(id, answered) {
 async function deleteQuestion(id) {
   await leaveAnimation(id);
   try {
-    const p = remove(ref(db, 'fragen/' + id));
+    const p = update(ref(db), { [`fragen/${id}`]: null, [`autoren/${id}`]: null });
     hud('Gelöscht');
     await p;
   } catch (err) {
-    adminError(err, 'Nicht gelöscht');
-  }
-}
-
-async function adminMenu(id) {
-  const q = find(id);
-  if (!q) return;
-  const v = await actionSheet({
-    message: q.text,
-    actions: [
-      { label: q.answered ? 'Wieder als offen markieren' : 'Als beantwortet markieren', value: 'toggle' },
-      { label: 'Frage löschen', value: 'delete', destructive: true },
-    ],
-  });
-  if (v === 'toggle') setAnswered(id, !q.answered);
-  if (v === 'delete') {
-    const ok = await showAlert('Frage löschen?', 'Die Frage verschwindet für alle. Das kann nicht rückgängig gemacht werden.', [
-      { label: 'Abbrechen', value: false, bold: true },
-      { label: 'Löschen', value: true, destructive: true },
-    ]);
-    if (ok) deleteQuestion(id);
+    if (isAdmin()) adminError(err, 'Nicht gelöscht');
+    else showAlert('Nicht gelöscht', denied(err) ? 'Diese Frage kannst du nicht löschen.' : errorText(err));
   }
 }
 
