@@ -1,0 +1,49 @@
+{
+  "rules": {
+    "fragen": {
+      ".read": true,
+      "$id": {
+        ".write": "auth != null && (root.child('ersteller').child(auth.uid).exists() || (!data.exists() && newData.exists() && newData.parent().parent().child('zuletzt').child(auth.uid).val() === now))",
+        ".validate": "newData.hasChildren(['text', 'erstellt', 'beantwortet', 'likes']) && (data.exists() || !newData.hasChild('beantwortetAm'))",
+        "text": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 600 && (!data.exists() || newData.val() === data.val())"
+        },
+        "erstellt": {
+          ".validate": "data.exists() ? newData.val() === data.val() : newData.val() === now"
+        },
+        "beantwortet": {
+          ".validate": "newData.isBoolean() && (data.exists() || newData.val() === false)"
+        },
+        "beantwortetAm": {
+          ".validate": "newData.val() === now"
+        },
+        "likes": {
+          ".write": "auth != null && data.exists() && ((newData.val() === data.val() + 1 && !root.child('likes').child(auth.uid).child($id).exists() && newData.parent().parent().parent().child('likes').child(auth.uid).child($id).exists()) || (newData.val() === data.val() - 1 && root.child('likes').child(auth.uid).child($id).exists() && !newData.parent().parent().parent().child('likes').child(auth.uid).child($id).exists()))",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (data.exists() || newData.val() === 0)"
+        },
+        "$other": { ".validate": false }
+      }
+    },
+    "likes": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$fid": {
+          ".write": "auth != null && auth.uid === $uid && root.child('fragen').child($fid).exists() && (newData.exists() ? (!data.exists() && newData.parent().parent().parent().child('fragen').child($fid).child('likes').val() === root.child('fragen').child($fid).child('likes').val() + 1) : (data.exists() && newData.parent().parent().parent().child('fragen').child($fid).child('likes').val() === root.child('fragen').child($fid).child('likes').val() - 1))",
+          ".validate": "newData.val() === true"
+        }
+      }
+    },
+    "zuletzt": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.val() === now && (!data.exists() || now - data.val() >= 5000)"
+      }
+    },
+    "ersteller": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}

@@ -1,57 +1,53 @@
 # Menti – anonyme Fragerunde
 
 Ein Link, über den alle per Handy **anonym Fragen stellen** können. Die Fragen stehen in der Mitte,
-jede kann **geliked** werden. Ein optionaler **Erstellerzugang** (oben links) markiert Fragen als beantwortet oder löscht sie.
-Alle sehen die offenen und die beantworteten Fragen (Umschalter oben). Gestaltet nach den Apple Human
-Interface Guidelines (Systemschrift, Systemfarben, Hell/Dunkel, großer Titel, Action Sheets).
+jede kann **geliked** werden. Über den **Erstellerzugang** (oben links) markieren freigeschaltete Ersteller
+Fragen als beantwortet oder löschen sie. Alle sehen die offenen und die beantworteten Fragen (Umschalter oben).
+Gestaltet nach den Apple Human Interface Guidelines (Systemschrift, Systemfarben, Hell/Dunkel, Action Sheets).
 
-## Starten
+**Adresse:** https://jahhhhhn.github.io/menti/
 
-Voraussetzung: Java 21 oder neuer (keine weiteren Bibliotheken).
+## Aufbau
 
-```
-start.cmd            (Windows, Doppelklick)
-./start.sh           (macOS/Linux/Git Bash)
-java src/Menti.java 9000   (anderer Port)
-```
-
-Die Konsole zeigt die Links und das Admin-Passwort:
-
-- `http://localhost:8080` – auf diesem PC
-- `http://192.168.x.x:8080` – für Handys im **selben WLAN** (beim ersten Start fragt die Windows-Firewall –
-  „Private Netzwerke“ erlauben)
-- `http://localhost:8080/admin` – öffnet direkt die Anmeldung (sonst oben links „Erstellerzugang“)
-
-## Link fürs Internet (Handys ohne gleiches WLAN)
-
-Am einfachsten ohne Konto über einen Cloudflare-Tunnel:
-
-```
-winget install Cloudflare.cloudflared
-cloudflared tunnel --url http://localhost:8080
-```
-
-Die Ausgabe enthält einen Link wie `https://xyz.trycloudflare.com` – den verschicken (gilt, solange PC und
-Tunnel laufen). Für einen dauerhaften Link kann Menti auf jedem Server mit Java laufen (Port über `PORT`).
+- `public/` – die Website (ohne Framework). GitHub Pages veröffentlicht diesen Ordner bei jedem Push auf
+  `main` automatisch (`.github/workflows/pages.yml`).
+- Daten liegen in der **Firebase Realtime Database** (Projekt `menti-dfdb1`, Region Belgien). Änderungen
+  erscheinen live bei allen.
+- `database.rules.json` – die Sicherheitsregeln. **Nach jeder Änderung** in der Firebase-Konsole unter
+  Realtime Database → Regeln einfügen und veröffentlichen.
+- `public/vendor/` – Firebase-Bibliothek 13.1.0 (lokal mitgeliefert wegen der strengen CSP).
+- Die frühere Version mit eigenem Java-Server liegt im Git-Tag `java-version`.
 
 ## Erstellerzugang
 
-- Passwort: Umgebungsvariable `MENTI_ADMIN_PASSWORD`, sonst `data/admin-passwort.txt`
-  (wird beim ersten Start zufällig erzeugt).
+- Oben links „Erstellerzugang“ → Anmeldung mit Google.
+- Nicht freigeschaltete Konten sehen ihre **Kennung** und werden gleich wieder abgemeldet.
+- **Freischalten:** Firebase-Konsole → Realtime Database → Daten → beim Eintrag `ersteller` auf „+“ →
+  Schlüssel = Kennung, Wert = E-Mail-Adresse (nur als Notiz). Entziehen = Eintrag löschen.
 - Im Ersteller-Modus: Kreis links tippen = beantwortet / wieder offen; Frage tippen = Menü mit „Löschen“.
-- Anmeldung gilt 24 Stunden bzw. bis zum Neustart des Servers.
 
 ## Daten & Anonymität
 
-- Fragen liegen in `data/fragen.json` (zum Zurücksetzen Server stoppen und Datei löschen).
-- Gespeichert werden keine Namen und keine IP-Adressen. Jedes Gerät hat eine zufällige Kennung im Browser;
-  der Server speichert nur deren Hashwert – damit jedes Gerät pro Frage nur einmal liken kann und die eigenen
-  Fragen als „Deine Frage“ sieht.
-- Schutz: höchstens 300 Zeichen, 5 s Pause zwischen zwei Fragen eines Geräts, doppelte offene Fragen werden
-  abgelehnt („like sie einfach“).
+- `fragen/{id}`: Text, Zeit, Status, Anzahl Likes – öffentlich lesbar, **ohne** Hinweis auf den Absender.
+- Besucher werden unsichtbar **anonym** bei Firebase angemeldet (zufällige Kennung, keine Namen).
+  `likes/{kennung}` (wer was geliked hat) und `zuletzt/{kennung}` (Zeit der letzten Frage) kann nur das
+  jeweilige Gerät selbst lesen.
+- „Deine Frage“ merkt sich nur der eigene Browser.
+- Die Regeln sorgen dafür: höchstens eine Frage alle 5 s pro Gerät, ein Like pro Gerät und Frage, Fragen
+  lassen sich nachträglich nicht ändern; beantworten und löschen dürfen nur Ersteller.
+- Doppelte offene Fragen und die 300-Zeichen-Grenze prüft die Website.
 
-## Technik
+## Lokal testen
 
-- `src/Menti.java` – HTTP-Server (JDK `HttpServer`, virtuelle Threads) + JSON-API, eine Datei.
-- `public/` – `index.html`, `style.css`, `app.js` (ohne Framework). Aktualisierung alle 3 s; der Server
-  antwortet mit 204, wenn sich nichts geändert hat.
+```
+cd public
+python -m http.server 8080
+```
+
+Dann http://localhost:8080 öffnen (`localhost` ist in Firebase als Domain erlaubt). Es wird die echte
+Datenbank benutzt.
+
+## Grenzen (Firebase-Gratistarif „Spark“)
+
+- höchstens 100 gleichzeitige Verbindungen, 1 GB gespeichert, 10 GB Download pro Monat – für eine
+  Fragerunde mehr als genug. Der Gratistarif kann keine Kosten verursachen.

@@ -1,9 +1,21 @@
-'use strict';
+/* Menti – Oberfläche. Daten in der Firebase Realtime Database (Änderungen kommen live),
+   Besucher sind anonym angemeldet, Ersteller melden sich mit Google an (Freischaltung unter /ersteller). */
 
-/* Menti – Oberfläche. Fragt den Server alle paar Sekunden nach Änderungen (nur Versionsnummer, 204 wenn gleich). */
+import { initializeApp } from './vendor/firebase-app.js';
+import {
+  getAuth, onAuthStateChanged, signInAnonymously, signInWithPopup, signOut, GoogleAuthProvider,
+} from './vendor/firebase-auth.js';
+import {
+  getDatabase, ref, onValue, get, push, update, remove, serverTimestamp,
+} from './vendor/firebase-database.js';
+import { firebaseConfig } from './firebase-config.js';
 
 const MAX_LEN = 300;
-const POLL_MS = 3000;
+const COOLDOWN_MS = 5000; // muss zu database.rules.json passen
+
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getDatabase(fbApp);
 
 const ICON = {
   heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3c-.3 0-.6-.1-.8-.3C6 15.6 2.8 12.6 2.8 8.9 2.8 6 5 3.8 7.8 3.8c1.7 0 3.2.8 4.2 2.2 1-1.4 2.5-2.2 4.2-2.2 2.8 0 5 2.2 5 5.1 0 3.7-3.2 6.7-8.4 11.1-.2.2-.5.3-.8.3z"/></svg>',
@@ -29,103 +41,110 @@ const store = {
   del(k) { try { localStorage.removeItem(k); } catch { /* privat */ } },
 };
 
-function randomId() {
-  const a = new Uint8Array(16);
-  crypto.getRandomValues(a); // funktioniert auch ohne HTTPS (crypto.randomUUID nicht)
-  return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
 const state = {
-  clientId: store.get('menti.client') || (() => { const id = randomId(); store.set('menti.client', id); return id; })(),
-  token: store.get('menti.admin'),
+  user: null,          // Firebase-Nutzer (anonym oder Google)
+  admin: false,
+  raw: {},             // /fragen
+  myLikes: {},         // /likes/{uid}
+  own: new Set(readOwn()), // eigene Fragen (nur in diesem Browser gemerkt)
   questions: [],
-  version: null,
   loaded: false,
   tab: 'open',
   sort: store.get('menti.sort') === 'new' ? 'new' : 'top',
-  pendingLikes: new Map(),
   sending: false,
+  lastSent: 0,
 };
+
+function readOwn() {
+  try { const a = JSON.parse(store.get('menti.eigene') || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+
+function rememberOwn(id) {
+  state.own.add(id);
+  store.set('menti.eigene', JSON.stringify([...state.own].slice(-200)));
+}
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const find = (id) => state.questions.find((q) => q.id === id);
-const isAdmin = () => !!state.token;
+const isAdmin = () => state.admin;
+const isGoogle = () => !!state.user && !state.user.isAnonymous;
+const denied = (err) => /permission[_ -]denied/i.test(String(err && (err.code || err.message)));
 
-// ---------------------------------------------------------------- Server
-
-async function api(method, path, body) {
-  const headers = { 'X-Client-Id': state.clientId };
-  if (state.token) headers.Authorization = 'Bearer ' + state.token;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  let res;
-  try {
-    res = await fetch('api/' + path, {
-      method, headers, cache: 'no-store',
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch {
-    const err = new Error('Keine Verbindung zum Server.');
-    err.status = 0;
-    throw err;
-  }
-  if (res.status === 204) return null;
-  let data = null;
-  try { data = await res.json(); } catch { /* leer */ }
-  if (!res.ok) {
-    const err = new Error((data && data.error) || 'Unbekannter Fehler (' + res.status + ').');
-    err.status = res.status;
-    err.data = data;
-    throw err;
-  }
-  return data;
+function errorText(err) {
+  if (denied(err)) return 'Keine Berechtigung.';
+  if (!navigator.onLine) return 'Keine Internetverbindung.';
+  return 'Unbekannter Fehler. Bitte versuch es noch einmal.';
 }
 
-let refreshing = null;
-let pollTimer = null;
+// ---------------------------------------------------------------- Daten (live)
 
-function refresh() {
-  if (refreshing) return refreshing;
-  refreshing = (async () => {
-    try {
-      const data = await api('GET', 'questions' + (state.version != null ? '?since=' + state.version : ''));
-      if (data) {
-        state.version = data.version;
-        state.questions = data.questions;
-        applyPendingLikes();
-        render({ animate: state.loaded });
-        state.loaded = true;
-      }
-      els.offline.hidden = true;
-    } catch {
-      els.offline.hidden = false;
-    } finally {
-      refreshing = null;
-    }
-  })();
-  return refreshing;
+function rebuild() {
+  state.questions = Object.entries(state.raw)
+    .filter(([, v]) => v && typeof v.text === 'string')
+    .map(([id, v]) => ({
+      id,
+      text: v.text,
+      created: v.erstellt || 0,
+      answered: !!v.beantwortet,
+      answeredAt: v.beantwortetAm || v.erstellt || 0,
+      likes: Math.max(0, v.likes || 0),
+      liked: !!state.myLikes[id],
+      own: state.own.has(id),
+    }));
 }
 
-/** Nach eigener Änderung: sofort neu laden (Version hat sich auf dem Server erhöht). */
-function refreshNow() {
-  refresh().then(() => refresh());
+function liveUpdate() {
+  rebuild();
+  render({ animate: state.loaded });
+  state.loaded = true;
 }
 
-function schedulePoll() {
-  clearTimeout(pollTimer);
-  if (document.hidden) return;
-  pollTimer = setTimeout(async () => { await refresh(); schedulePoll(); }, POLL_MS);
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) { refresh(); schedulePoll(); } else clearTimeout(pollTimer);
+onValue(ref(db, 'fragen'), (snap) => {
+  state.raw = snap.val() || {};
+  liveUpdate();
+}, () => {
+  els.loading.hidden = true;
+  els.offline.hidden = false;
 });
 
-function applyPendingLikes() {
-  for (const [id, want] of state.pendingLikes) {
-    const q = find(id);
-    if (q && q.liked !== want) { q.liked = want; q.likes += want ? 1 : -1; }
+// Verbindungsanzeige (verzögert, damit sie beim Laden nicht aufblitzt)
+let offlineTimer = null;
+onValue(ref(db, '.info/connected'), (snap) => {
+  clearTimeout(offlineTimer);
+  if (snap.val()) els.offline.hidden = true;
+  else offlineTimer = setTimeout(() => { els.offline.hidden = false; }, 2500);
+});
+
+let unsubLikes = null;
+
+onAuthStateChanged(auth, async (user) => {
+  if (unsubLikes) { unsubLikes(); unsubLikes = null; }
+  state.myLikes = {};
+  state.user = user;
+  state.admin = false;
+  applyAdmin();
+  if (state.loaded) liveUpdate();
+  if (!user) {
+    signInAnonymously(auth).catch(() => {
+      showAlert('Anmeldung fehlgeschlagen', 'Liken und Fragen sind gerade nicht möglich. Bitte lade die Seite neu.');
+    });
+    return;
   }
+  unsubLikes = onValue(ref(db, 'likes/' + user.uid), (snap) => {
+    state.myLikes = snap.val() || {};
+    if (state.loaded) liveUpdate();
+  }, () => {});
+  if (!user.isAnonymous) {
+    state.admin = await checkAdmin(user);
+    if (state.user !== user) return;
+    applyAdmin();
+    refreshTimes();
+  }
+});
+
+async function checkAdmin(user) {
+  try { return (await get(ref(db, 'ersteller/' + user.uid))).exists(); } catch { return false; }
 }
 
 // ---------------------------------------------------------------- Darstellung
@@ -303,28 +322,31 @@ new IntersectionObserver(([e]) => document.body.classList.toggle('scrolled', !e.
 async function toggleLike(id) {
   const q = find(id);
   if (!q) return;
+  if (!state.user) { showAlert('Nicht geliked', 'Verbindung wird noch aufgebaut. Bitte versuch es gleich noch einmal.'); return; }
   const want = !q.liked;
-  q.liked = want;
-  q.likes += want ? 1 : -1;
-  state.pendingLikes.set(id, want);
   const el = nodes.get(id);
-  if (el) {
-    updateCell(el, q);
-    if (want) { const b = el.querySelector('.like'); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
-  }
+  if (el && want) { const b = el.querySelector('.like'); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
   if (want && navigator.vibrate) navigator.vibrate(8);
-  try {
-    const res = await api('POST', `questions/${encodeURIComponent(id)}/like`, { liked: want });
-    if (state.pendingLikes.get(id) === want) state.pendingLikes.delete(id);
-    const cur = find(id);
-    if (cur && !state.pendingLikes.has(id)) { Object.assign(cur, res); const e2 = nodes.get(id); if (e2) updateCell(e2, cur); }
-    refreshNow();
-  } catch (err) {
-    if (state.pendingLikes.get(id) === want) state.pendingLikes.delete(id);
-    const cur = find(id);
-    if (cur && cur.liked === want) { cur.liked = !want; cur.likes += want ? -1 : 1; const e2 = nodes.get(id); if (e2) updateCell(e2, cur); }
-    if (err.status === 404) refreshNow();
-    else showAlert('Like nicht gespeichert', err.message);
+  const uid = state.user.uid;
+  // Like-Eintrag und Zähler ändern sich gemeinsam; die Regeln prüfen, dass beides zusammenpasst.
+  // Hat gleichzeitig jemand anderes geliked, passt der Zähler nicht – dann frisch lesen und erneut versuchen.
+  let count = (state.raw[id] && state.raw[id].likes) || 0;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await update(ref(db), {
+        [`likes/${uid}/${id}`]: want ? true : null,
+        [`fragen/${id}/likes`]: count + (want ? 1 : -1),
+      });
+      return;
+    } catch (err) {
+      if (!denied(err) || attempt >= 3) { showAlert('Like nicht gespeichert', errorText(err)); return; }
+      try {
+        const [c, mine] = await Promise.all([get(ref(db, `fragen/${id}/likes`)), get(ref(db, `likes/${uid}/${id}`))]);
+        if (!c.exists()) return; // Frage wurde gelöscht
+        if (mine.exists() === want) return; // schon erledigt (z. B. in anderem Tab)
+        count = c.val();
+      } catch (e2) { showAlert('Like nicht gespeichert', errorText(e2)); return; }
+    }
   }
 }
 
@@ -353,35 +375,57 @@ els.input.addEventListener('keydown', (e) => {
   }
 });
 
+const normalize = (t) => t.toLowerCase().replace(/[\s?!.,;:„“"'»«]+/g, ' ').trim();
+
+function clearComposer() {
+  els.input.value = '';
+  autosize();
+  els.input.blur();
+}
+
 els.composer.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const text = els.input.value.trim();
-  if (!text || state.sending) return;
+  const text = els.input.value.trim().replace(/\n{3,}/g, '\n\n');
+  if (!text || state.sending || [...text].length > MAX_LEN) return;
+
+  const dup = state.questions.find((q) => !q.answered && normalize(q.text) === normalize(text));
+  if (dup) {
+    clearComposer();
+    await showAlert('Schon gefragt', 'Diese Frage gibt es schon – like sie einfach.');
+    setTab('open');
+    highlight(dup.id);
+    return;
+  }
+  const wait = state.lastSent + COOLDOWN_MS - Date.now();
+  if (wait > 0) {
+    showAlert('Kurz warten', `Du kannst in ${Math.ceil(wait / 1000)} Sekunden die nächste Frage stellen.`);
+    return;
+  }
+  if (!state.user) {
+    showAlert('Nicht gesendet', 'Verbindung wird noch aufgebaut. Bitte versuch es gleich noch einmal.');
+    return;
+  }
+
   state.sending = true;
   updateComposer();
+  const id = push(ref(db, 'fragen')).key;
+  rememberOwn(id);
   try {
-    const q = await api('POST', 'questions', { text });
-    els.input.value = '';
-    autosize();
-    els.input.blur();
-    if (!find(q.id)) state.questions.push(q);
+    const p = update(ref(db), {
+      [`fragen/${id}`]: { text, erstellt: serverTimestamp(), beantwortet: false, likes: 0 },
+      [`zuletzt/${state.user.uid}`]: serverTimestamp(),
+    });
+    // Die Frage erscheint sofort (lokal), der Server bestätigt im Hintergrund.
+    clearComposer();
     setTab('open');
-    render({ animate: true });
-    highlight(q.id);
+    highlight(id);
+    await p;
+    state.lastSent = Date.now();
     hud('Gesendet');
-    refreshNow();
   } catch (err) {
-    if (err.status === 409 && err.data && err.data.id) {
-      els.input.value = '';
-      autosize();
-      els.input.blur();
-      await showAlert('Schon gefragt', err.message);
-      await refresh();
-      const q = find(err.data.id);
-      if (q) { setTab(q.answered ? 'answered' : 'open'); highlight(q.id); }
-    } else {
-      showAlert('Nicht gesendet', err.message);
-    }
+    els.input.value = text;
+    autosize();
+    showAlert('Nicht gesendet', denied(err) ? 'Bitte warte ein paar Sekunden zwischen zwei Fragen.' : errorText(err));
   } finally {
     state.sending = false;
     updateComposer();
@@ -414,31 +458,22 @@ els.sortBtn.addEventListener('click', async () => {
 function applyAdmin() {
   document.body.classList.toggle('admin', isAdmin());
   els.adminBanner.hidden = !isAdmin();
-  els.adminBtn.textContent = isAdmin() ? 'Abmelden' : 'Erstellerzugang';
+  els.adminBtn.textContent = isGoogle() ? 'Abmelden' : 'Erstellerzugang';
   for (const el of nodes.values()) el.tabIndex = isAdmin() ? 0 : -1;
 }
 
-function dropAdmin() {
-  state.token = null;
-  store.del('menti.admin');
-  applyAdmin();
-}
-
 async function logout() {
-  try { await api('POST', 'admin/logout'); } catch { /* egal */ }
-  dropAdmin();
-  hud('Abgemeldet');
+  try { await signOut(auth); } catch { /* egal */ }
+  hud('Abgemeldet'); // danach meldet onAuthStateChanged wieder anonym an
 }
 
 async function adminError(err, title) {
-  if (err.status === 401) {
-    dropAdmin();
-    await showAlert('Abgemeldet', 'Die Ersteller-Sitzung ist abgelaufen. Bitte melde dich erneut an.');
-    openLogin();
-  } else if (err.status === 404) {
-    refreshNow();
+  if (denied(err) && state.user) {
+    state.admin = await checkAdmin(state.user);
+    applyAdmin();
+    showAlert(title, state.admin ? 'Die Frage gibt es nicht mehr.' : 'Dein Konto ist nicht (mehr) als Ersteller freigeschaltet.');
   } else {
-    showAlert(title, err.message);
+    showAlert(title, errorText(err));
   }
 }
 
@@ -451,27 +486,22 @@ async function leaveAnimation(id) {
 }
 
 async function setAnswered(id, answered) {
+  await leaveAnimation(id);
   try {
-    const res = await api('POST', `questions/${encodeURIComponent(id)}/answered`, { answered });
-    await leaveAnimation(id);
-    const q = find(id);
-    if (q) Object.assign(q, res);
-    render({ animate: true });
+    const p = update(ref(db, 'fragen/' + id), { beantwortet: answered, beantwortetAm: answered ? serverTimestamp() : null });
     hud(answered ? 'Beantwortet' : 'Wieder offen');
-    refreshNow();
+    await p;
   } catch (err) {
     adminError(err, 'Nicht gespeichert');
   }
 }
 
 async function deleteQuestion(id) {
+  await leaveAnimation(id);
   try {
-    await api('DELETE', `questions/${encodeURIComponent(id)}`);
-    await leaveAnimation(id);
-    state.questions = state.questions.filter((q) => q.id !== id);
-    render({ animate: true });
+    const p = remove(ref(db, 'fragen/' + id));
     hud('Gelöscht');
-    refreshNow();
+    await p;
   } catch (err) {
     adminError(err, 'Nicht gelöscht');
   }
@@ -497,58 +527,40 @@ async function adminMenu(id) {
   }
 }
 
-els.adminBtn.addEventListener('click', () => (isAdmin() ? logout() : openLogin()));
+els.adminBtn.addEventListener('click', () => (isGoogle() ? logout() : login()));
 
-function openLogin() {
-  const o = overlay('form-overlay');
-  o.innerHTML = `
-    <form class="form-sheet" role="dialog" aria-modal="true" aria-labelledby="loginTitle" autocomplete="off">
-      <div class="grabber" aria-hidden="true"></div>
-      <div class="sheet-bar">
-        <button class="nav-btn" type="button" data-cancel>Abbrechen</button>
-        <span class="sheet-title" id="loginTitle">Erstellerzugang</span>
-        <button class="nav-btn" type="submit" disabled>Anmelden</button>
-      </div>
-      <div class="form-group">
-        <input type="password" name="password" placeholder="Passwort" aria-label="Ersteller-Passwort" autocomplete="current-password" enterkeyhint="go">
-      </div>
-      <p class="form-footer">Als Ersteller kannst du Fragen als beantwortet markieren und löschen.</p>
-    </form>`;
-  const form = o.querySelector('form');
-  const input = form.querySelector('input');
-  const submit = form.querySelector('[type=submit]');
-  const footer = form.querySelector('.form-footer');
-  const defaultFooter = footer.textContent;
-  const close = trapOverlay(o, () => close());
-
-  input.addEventListener('input', () => {
-    submit.disabled = !input.value.trim();
-    footer.classList.remove('error');
-    footer.textContent = defaultFooter;
-  });
-  form.querySelector('[data-cancel]').addEventListener('click', () => close());
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!input.value.trim()) return;
-    submit.disabled = true;
-    try {
-      const res = await api('POST', 'admin/login', { password: input.value });
-      state.token = res.token;
-      store.set('menti.admin', res.token);
-      applyAdmin();
-      refreshTimes();
-      close();
-      hud('Angemeldet');
-      if (location.pathname.endsWith('/admin')) history.replaceState(null, '', './');
-    } catch (err) {
-      footer.textContent = err.message;
-      footer.classList.add('error');
-      form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake');
-      input.select();
-      submit.disabled = false;
-    }
-  });
-  setTimeout(() => input.focus(), 320);
+async function login() {
+  let user;
+  try {
+    user = (await signInWithPopup(auth, new GoogleAuthProvider())).user;
+  } catch (err) {
+    const code = String(err && err.code);
+    if (code.includes('popup-closed') || code.includes('cancelled-popup')) return;
+    showAlert('Anmeldung fehlgeschlagen', code.includes('popup-blocked')
+      ? 'Der Browser hat das Anmeldefenster blockiert. Bitte Pop-ups für diese Seite erlauben.'
+      : code.includes('unauthorized-domain')
+        ? 'Diese Adresse ist in Firebase nicht als Domain erlaubt.'
+        : code.includes('operation-not-allowed')
+          ? 'Die Google-Anmeldung ist in Firebase noch nicht eingeschaltet.'
+          : errorText(err));
+    return;
+  }
+  if (await checkAdmin(user)) {
+    hud('Angemeldet');
+    return; // onAuthStateChanged schaltet den Ersteller-Modus ein
+  }
+  // Nicht freigeschaltet: Kennung zeigen und sofort wieder abmelden (Besucher bleiben anonym).
+  const uid = user.uid;
+  const mail = user.email || '';
+  await signOut(auth).catch(() => {});
+  const copy = await showAlert('Noch nicht freigeschaltet',
+    `${mail ? mail + ' · ' : ''}Kennung: ${uid}. Ein Ersteller muss diese Kennung in Firebase freischalten.`, [
+      { label: 'OK', value: false },
+      { label: 'Kennung kopieren', value: true, bold: true },
+    ]);
+  if (copy) {
+    try { await navigator.clipboard.writeText(uid); hud('Kopiert'); } catch { /* nicht erlaubt */ }
+  }
 }
 
 // ---------------------------------------------------------------- Overlays
@@ -662,13 +674,5 @@ function hud(text) {
 
 // ---------------------------------------------------------------- Start
 
-(async function start() {
-  applyAdmin();
-  updateComposer();
-  if (state.token) {
-    try { await api('GET', 'admin/check'); } catch (err) { if (err.status === 401) dropAdmin(); }
-  }
-  await refresh();
-  schedulePoll();
-  if (location.pathname.replace(/\/+$/, '').endsWith('/admin') && !isAdmin()) openLogin();
-})();
+applyAdmin();
+updateComposer();
