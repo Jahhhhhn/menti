@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Fragen">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="description" content="Stell anonym eine Frage und like die Fragen der anderen.">
+  <title>Fragen</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="navbar">
+    <div class="navbar-inner">
+      <div class="nav-left">
+        <button class="nav-btn" id="adminBtn" type="button">Erstellerzugang</button>
+      </div>
+      <div class="nav-title" aria-hidden="true">Fragen</div>
+      <div class="nav-right">
+        <button class="nav-btn icon" id="sortBtn" type="button" aria-label="Sortieren">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19V5M3.8 8.7 7.5 5l3.7 3.7M16.5 5v14M12.8 15.3l3.7 3.7 3.7-3.7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <h1 class="large-title" id="largeTitle">Fragen</h1>
+    <p class="subtitle">Anonym fragen und Fragen der anderen liken.</p>
+
+    <div class="segmented" id="segmented" role="tablist" data-index="0">
+      <span class="seg-thumb" aria-hidden="true"></span>
+      <button type="button" role="tab" aria-selected="true" data-tab="open">Offen<span class="seg-count" id="countOpen"></span></button>
+      <button type="button" role="tab" aria-selected="false" data-tab="answered">Beantwortet<span class="seg-count" id="countDone"></span></button>
+    </div>
+
+    <div class="banner admin-banner" id="adminBanner" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 5.8v5.4c0 4.4 3 8.3 7 9.8 4-1.5 7-5.4 7-9.8V5.8L12 3z" fill="currentColor"/></svg>
+      <span>Ersteller-Modus · Kreis tippen = beantwortet, Frage tippen = mehr</span>
+    </div>
+    <div class="banner offline-banner" id="offline" hidden>
+      <span>Keine Verbindung – neuer Versuch läuft …</span>
+    </div>
+
+    <p class="section-header" id="sectionHeader"></p>
+    <section class="list" id="list" aria-live="polite" hidden></section>
+
+    <div class="loading" id="loading" aria-label="Lädt"><span class="spinner"></span></div>
+
+    <div class="empty" id="empty" hidden>
+      <div class="empty-icon" id="emptyIcon"></div>
+      <p class="empty-title" id="emptyTitle"></p>
+      <p class="empty-text" id="emptyText"></p>
+    </div>
+
+    <footer class="footer">
+      <p>Fragen sind anonym – es werden keine Namen gespeichert.</p>
+    </footer>
+  </main>
+
+  <form class="composer" id="composer" autocomplete="off">
+    <div class="composer-inner">
+      <div class="field">
+        <textarea id="input" rows="1" maxlength="300" placeholder="Anonym eine Frage stellen" aria-label="Deine Frage" enterkeyhint="send"></textarea>
+        <span class="counter" id="counter" aria-live="polite"></span>
+        <button class="send" id="send" type="submit" aria-label="Frage senden" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18.5V6M6.5 11.3 12 5.8l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </form>
+
+  <div class="hud" id="hud" role="status" aria-live="polite">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="hud-text"></span>
+  </div>
+</body>
+</html>
