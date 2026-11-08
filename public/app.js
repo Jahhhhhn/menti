@@ -375,7 +375,8 @@ els.input.addEventListener('keydown', (e) => {
   }
 });
 
-const normalize = (t) => t.toLowerCase().replace(/[\s?!.,;:„“"'»«]+/g, ' ').trim();
+// Zum Vergleich auf doppelte Fragen zählen nur Buchstaben und Ziffern.
+const normalize = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 function clearComposer() {
   els.input.value = '';
