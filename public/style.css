@@ -122,7 +122,7 @@ body.scrolled .navbar::after { opacity: 1; }
   align-items: center;
 }
 .nav-left { justify-self: start; }
-.nav-right { justify-self: end; }
+.nav-right { justify-self: end; display: flex; align-items: center; }
 .nav-title {
   font-weight: 600;
   opacity: 0;
@@ -146,6 +146,21 @@ body.scrolled .nav-title { opacity: 1; }
 .nav-btn:active { opacity: .35; }
 .nav-btn.icon svg { width: 24px; height: 24px; }
 .nav-btn.invisible { visibility: hidden; }
+.inbox-btn { position: relative; }
+.badge {
+  position: absolute;
+  top: 4px; right: 2px;
+  min-width: 18px; height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
 
 /* ---------- Inhalt ---------- */
 
@@ -691,6 +706,51 @@ body.admin .cell:active { background: var(--cell-pressed); }
   color: var(--label2);
 }
 .form-footer.error { color: var(--red); }
+
+/* Postfach: Anfragen für den Erstellerzugang */
+.req-list {
+  margin: 4px 16px 0;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  border-radius: 10px;
+  background: var(--elevated-cell);
+}
+.req-list:empty { display: none; }
+.req {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px 11px 16px;
+}
+.req + .req::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 16px; right: 0;
+  height: 1px;
+  background: var(--sep);
+  transform: scaleY(.5);
+}
+.req-main { flex: 1; min-width: 0; }
+.req-name, .req-mail { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.req-name { font-size: 17px; line-height: 22px; }
+.req-mail { font-size: 13px; line-height: 18px; letter-spacing: -.08px; color: var(--label2); }
+.req-actions { display: flex; gap: 6px; flex: none; }
+.pill {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--fill3);
+  color: var(--blue);
+}
+.pill.accept { background: var(--blue); color: #fff; }
+.pill.reject { color: var(--red); }
+.pill:active { opacity: .6; }
+.pill:disabled { opacity: .4; }
+.req-empty { text-align: center; margin: 20px 32px 4px; color: var(--label2); font-size: 15px; }
 .shake { animation: shake .42s; }
 @keyframes shake {
   0%, 100% { transform: none; }

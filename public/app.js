@@ -6,7 +6,7 @@ import {
   getAuth, onAuthStateChanged, signInAnonymously, signInWithPopup, signOut, GoogleAuthProvider,
 } from './vendor/firebase-auth.js';
 import {
-  getDatabase, ref, onValue, get, push, update, remove, serverTimestamp,
+  getDatabase, ref, onValue, get, set, push, update, remove, serverTimestamp,
 } from './vendor/firebase-database.js';
 import { firebaseConfig } from './firebase-config.js';
 
@@ -30,7 +30,7 @@ const $ = (sel) => document.querySelector(sel);
 const els = {
   list: $('#list'), empty: $('#empty'), emptyIcon: $('#emptyIcon'), emptyTitle: $('#emptyTitle'), emptyText: $('#emptyText'),
   loading: $('#loading'), sectionHeader: $('#sectionHeader'), segmented: $('#segmented'),
-  countOpen: $('#countOpen'), countDone: $('#countDone'), sortBtn: $('#sortBtn'), adminBtn: $('#adminBtn'),
+  countOpen: $('#countOpen'), countDone: $('#countDone'), sortBtn: $('#sortBtn'), adminBtn: $('#adminBtn'), inboxBtn: $('#inboxBtn'), inboxBadge: $('#inboxBadge'),
   adminBanner: $('#adminBanner'), offline: $('#offline'), largeTitle: $('#largeTitle'),
   composer: $('#composer'), input: $('#input'), send: $('#send'), counter: $('#counter'), hud: $('#hud'),
 };
@@ -53,6 +53,7 @@ const state = {
   sort: store.get('menti.sort') === 'new' ? 'new' : 'top',
   sending: false,
   lastSent: 0,
+  requests: [],        // offene Anfragen für den Erstellerzugang (nur für Ersteller)
 };
 
 function readOwn() {
@@ -472,7 +473,112 @@ function applyAdmin() {
   document.body.classList.toggle('admin', isAdmin());
   els.adminBanner.hidden = !isAdmin();
   els.adminBtn.textContent = isGoogle() ? 'Abmelden' : 'Erstellerzugang';
+  els.inboxBtn.hidden = !isAdmin();
   for (const el of nodes.values()) el.tabIndex = isAdmin() ? 0 : -1;
+  watchRequests();
+}
+
+// ---------------------------------------------------------------- Postfach (Anfragen)
+
+let unsubRequests = null;
+let renderInbox = null; // gesetzt, solange das Postfach offen ist
+
+function watchRequests() {
+  if (isAdmin() && !unsubRequests) {
+    unsubRequests = onValue(ref(db, 'anfragen'), (snap) => {
+      state.requests = Object.entries(snap.val() || {})
+        .filter(([, v]) => v && typeof v.email === 'string')
+        .map(([uid, v]) => ({ uid, email: v.email, name: v.name || '', time: v.zeit || 0 }))
+        .sort((a, b) => b.time - a.time);
+      updateBadge();
+    }, () => { state.requests = []; updateBadge(); });
+  } else if (!isAdmin() && unsubRequests) {
+    unsubRequests();
+    unsubRequests = null;
+    state.requests = [];
+    updateBadge();
+  }
+}
+
+function updateBadge() {
+  const n = state.requests.length;
+  els.inboxBadge.hidden = n === 0;
+  els.inboxBadge.textContent = n > 99 ? '99+' : String(n);
+  els.inboxBtn.setAttribute('aria-label', n ? `Anfragen (${n} offen)` : 'Anfragen');
+  if (renderInbox) renderInbox();
+}
+
+els.inboxBtn.addEventListener('click', openInbox);
+
+function openInbox() {
+  const o = overlay('form-overlay');
+  o.innerHTML = `
+    <div class="form-sheet" role="dialog" aria-modal="true" aria-labelledby="inboxTitle">
+      <div class="grabber" aria-hidden="true"></div>
+      <div class="sheet-bar">
+        <span></span>
+        <span class="sheet-title" id="inboxTitle">Anfragen</span>
+        <button class="nav-btn" type="button" data-done>Fertig</button>
+      </div>
+      <div class="req-list" aria-live="polite"></div>
+      <p class="req-empty" hidden>Keine offenen Anfragen.</p>
+      <p class="form-footer">Wer sich über „Erstellerzugang“ mit Google anmeldet, landet hier. Akzeptierte Konten
+        können Fragen beantworten und löschen – und selbst Anfragen annehmen.</p>
+    </div>`;
+  const list = o.querySelector('.req-list');
+  const empty = o.querySelector('.req-empty');
+  const close = trapOverlay(o, () => done());
+  const done = () => { renderInbox = null; close(); };
+  o.querySelector('[data-done]').addEventListener('click', done);
+
+  renderInbox = () => {
+    empty.hidden = state.requests.length > 0;
+    list.replaceChildren(...state.requests.map((r) => {
+      const row = document.createElement('div');
+      row.className = 'req';
+      const main = document.createElement('div');
+      main.className = 'req-main';
+      const name = document.createElement('p');
+      name.className = 'req-name';
+      name.textContent = r.name || r.email;
+      const mail = document.createElement('p');
+      mail.className = 'req-mail';
+      mail.textContent = (r.name ? r.email + ' · ' : '') + relTime(r.time);
+      main.append(name, mail);
+      const actions = document.createElement('div');
+      actions.className = 'req-actions';
+      const no = document.createElement('button');
+      no.type = 'button';
+      no.className = 'pill reject';
+      no.textContent = 'Ablehnen';
+      no.setAttribute('aria-label', `${r.email} ablehnen`);
+      const yes = document.createElement('button');
+      yes.type = 'button';
+      yes.className = 'pill accept';
+      yes.textContent = 'Akzeptieren';
+      yes.setAttribute('aria-label', `${r.email} akzeptieren`);
+      no.addEventListener('click', () => decide(r, false, [no, yes]));
+      yes.addEventListener('click', () => decide(r, true, [no, yes]));
+      actions.append(no, yes);
+      row.append(main, actions);
+      return row;
+    }));
+  };
+  renderInbox();
+  setTimeout(() => o.querySelector('[data-done]').focus({ preventScroll: true }), 60);
+}
+
+async function decide(r, accept, buttons) {
+  for (const b of buttons) b.disabled = true;
+  try {
+    await update(ref(db), accept
+      ? { [`ersteller/${r.uid}`]: r.email, [`anfragen/${r.uid}`]: null }
+      : { [`anfragen/${r.uid}`]: null });
+    hud(accept ? 'Freigeschaltet' : 'Abgelehnt');
+  } catch (err) {
+    for (const b of buttons) b.disabled = false;
+    adminError(err, accept ? 'Nicht freigeschaltet' : 'Nicht abgelehnt');
+  }
 }
 
 async function logout() {
@@ -568,17 +674,20 @@ async function login() {
     showAlert('Prüfung fehlgeschlagen', 'Ob dein Konto freigeschaltet ist, ließ sich gerade nicht prüfen. Bitte versuch es noch einmal.');
     return;
   }
-  // Nicht freigeschaltet: Kennung zeigen und sofort wieder abmelden (Besucher bleiben anonym).
-  const uid = user.uid;
-  const mail = user.email || '';
+  // Nicht freigeschaltet: Anfrage ins Postfach der Ersteller legen und wieder abmelden (Besucher bleiben anonym).
+  let sent = true;
+  try {
+    const req = { email: user.email || '', zeit: serverTimestamp() };
+    if (user.displayName) req.name = user.displayName.slice(0, 100);
+    await set(ref(db, 'anfragen/' + user.uid), req);
+  } catch {
+    sent = false;
+  }
   await signOut(auth).catch(() => {});
-  const copy = await showAlert('Noch nicht freigeschaltet',
-    `${mail ? mail + ' · ' : ''}Kennung: ${uid}. Ein Ersteller muss diese Kennung in Firebase freischalten.`, [
-      { label: 'OK', value: false },
-      { label: 'Kennung kopieren', value: true, bold: true },
-    ]);
-  if (copy) {
-    try { await navigator.clipboard.writeText(uid); hud('Kopiert'); } catch { /* nicht erlaubt */ }
+  if (sent) {
+    showAlert('Anfrage gesendet', `Ein Ersteller kann ${user.email || 'dein Konto'} jetzt freischalten. Melde dich danach einfach noch einmal an.`);
+  } else {
+    showAlert('Anfrage nicht gesendet', 'Bitte versuch es noch einmal.');
   }
 }
 

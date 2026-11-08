@@ -8,7 +8,7 @@ Nutzer spricht Deutsch; UI-Texte und Kommentare deutsch. Design nach Apple HIG (
   `public/firebase-config.js`. Firebase-SDK 13.1.0 liegt in `public/vendor/` (Importe auf `./firebase-app.js` umgeschrieben).
 - `database.rules.json` ist die Quelle der Sicherheitsregeln; der Nutzer fügt sie von Hand in der Konsole ein
   (kein Firebase-CLI). Bei Änderungen daran erinnern.
-- Besucher: anonyme Firebase-Anmeldung. Ersteller: Google-Anmeldung, freigeschaltet über `ersteller/{uid}` (nur Konsole).
+- Besucher: anonyme Firebase-Anmeldung. Ersteller: Google-Anmeldung; Nicht-Freigeschaltete legen `anfragen/{uid}` an, Ersteller nehmen sie im Postfach (oben rechts) an → `ersteller/{uid}`.
 - CSP als `<meta>` in `index.html` (`script-src 'self'` + Google/Firebase, `style-src 'self'`) → keine Inline-Skripte/
   `style`-Attribute, nur `el.style.x = …` aus JS.
 - Anonymität: keine Namen/IPs speichern; öffentliche Daten (`fragen`) ohne Bezug zum Absender.
