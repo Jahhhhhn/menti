@@ -32,7 +32,8 @@ Gestaltet nach den Apple Human Interface Guidelines (Systemschrift, Systemfarben
 - Im Ersteller-Modus: Kreis links tippen = beantwortet / wieder offen; „Löschen“ bei jeder Frage (sofort, ohne Rückfrage).
 - Besucher können ihre **eigenen Fragen** löschen („Löschen“ neben „Deine Frage“).
 - Von Erstellern gelöschte Fragen landen im Reiter **Gelöscht** (`papierkorb/`, nur für Ersteller sichtbar) und
-  lassen sich dort **wiederherstellen** oder **endgültig löschen**. Selbst gelöschte Fragen sind sofort weg.
+  lassen sich dort **wiederherstellen**. Endgültig löschen ist bewusst nicht möglich (auch die Regeln verbieten
+  es). Selbst gelöschte Fragen sind sofort weg.
 
 ## Daten & Anonymität
 

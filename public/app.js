@@ -295,12 +295,7 @@ function updateCell(el, q) {
     back.className = 'q-del q-restore';
     back.textContent = 'Wiederherstellen';
     back.addEventListener('click', (e) => { e.stopPropagation(); restoreQuestion(q.id); });
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'q-del';
-    del.textContent = 'Endgültig löschen';
-    del.addEventListener('click', (e) => { e.stopPropagation(); purgeQuestion(q.id); });
-    meta.replaceChildren(t, back, del);
+    meta.replaceChildren(t, back);
     el.classList.remove('answered');
     return;
   }
@@ -749,15 +744,6 @@ async function restoreQuestion(id) {
     await update(ref(db), { [`fragen/${id}`]: q, [`papierkorb/${id}`]: null });
   } catch (err) {
     adminError(err, 'Nicht wiederhergestellt');
-  }
-}
-
-async function purgeQuestion(id) {
-  await leaveAnimation(id);
-  try {
-    await update(ref(db), { [`papierkorb/${id}`]: null, [`autoren/${id}`]: null });
-  } catch (err) {
-    adminError(err, 'Nicht gelöscht');
   }
 }
 

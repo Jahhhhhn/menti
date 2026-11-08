@@ -35,7 +35,7 @@
     "papierkorb": {
       ".read": "auth != null && root.child('ersteller').child(auth.uid).exists()",
       "$id": {
-        ".write": "auth != null && root.child('ersteller').child(auth.uid).exists()",
+        ".write": "auth != null && root.child('ersteller').child(auth.uid).exists() && (newData.exists() || newData.parent().parent().child('fragen').child($id).exists())",
         ".validate": "newData.hasChildren(['text', 'erstellt', 'geloeschtAm'])",
         "geloeschtAm": {
           ".validate": "newData.val() === now"
