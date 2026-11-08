@@ -441,7 +441,6 @@ els.composer.addEventListener('submit', async (e) => {
     highlight(id);
     await p;
     state.lastSent = Date.now();
-    hud('Gesendet');
   } catch (err) {
     els.input.value = text;
     autosize();
@@ -683,7 +682,6 @@ async function deleteQuestion(id) {
   await leaveAnimation(id);
   try {
     const p = update(ref(db), { [`fragen/${id}`]: null, [`autoren/${id}`]: null });
-    hud('Gelöscht');
     await p;
   } catch (err) {
     if (isAdmin()) adminError(err, 'Nicht gelöscht');
