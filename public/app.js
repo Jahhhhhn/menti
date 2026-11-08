@@ -23,6 +23,7 @@ const ICON = {
   tick: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.3 3 3 6-6.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   mark: '<svg class="mark" viewBox="0 0 20 20" aria-hidden="true"><path d="m4 10.5 4 4 8-8.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   bubble: '<svg viewBox="0 0 56 56" aria-hidden="true"><path d="M28 9C16.4 9 7 16.8 7 26.4c0 5.5 3.1 10.4 7.9 13.6-.4 2.6-1.7 5.2-3.6 7.2 4.1-.2 8-1.8 10.6-4 2 .5 4 .8 6.1.8 11.6 0 21-7.8 21-17.4S39.6 9 28 9z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M24.3 22.2a3.9 3.9 0 1 1 5.6 3.5c-1.2.6-1.9 1.4-1.9 2.6v.7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="28" cy="33.4" r="1.8" fill="currentColor"/></svg>',
+  trash: '<svg viewBox="0 0 56 56" aria-hidden="true"><path d="M13 16h30M23 16v-3.5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2V16M16.5 16l2 27a3 3 0 0 0 3 2.8h13a3 3 0 0 0 3-2.8l2-27M24 23v15M32 23v15" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   done: '<svg viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="20" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="m19.5 28.6 6 6 11.5-12.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
@@ -30,7 +31,7 @@ const $ = (sel) => document.querySelector(sel);
 const els = {
   list: $('#list'), empty: $('#empty'), emptyIcon: $('#emptyIcon'), emptyTitle: $('#emptyTitle'), emptyText: $('#emptyText'),
   loading: $('#loading'), sectionHeader: $('#sectionHeader'), segmented: $('#segmented'),
-  countOpen: $('#countOpen'), countDone: $('#countDone'), sortBtn: $('#sortBtn'), adminBtn: $('#adminBtn'), inboxBtn: $('#inboxBtn'), inboxBadge: $('#inboxBadge'),
+  countOpen: $('#countOpen'), countDone: $('#countDone'), countDeleted: $('#countDeleted'), segDeleted: $('#segDeleted'), sortBtn: $('#sortBtn'), adminBtn: $('#adminBtn'), inboxBtn: $('#inboxBtn'), inboxBadge: $('#inboxBadge'),
   adminBanner: $('#adminBanner'), offline: $('#offline'), largeTitle: $('#largeTitle'),
   composer: $('#composer'), input: $('#input'), send: $('#send'), counter: $('#counter'),
 };
@@ -55,6 +56,7 @@ const state = {
   lastSent: 0,
   requests: [],        // offene Anfragen für den Erstellerzugang (nur für Ersteller)
   blocked: [],         // gesperrte Konten (nur für Ersteller)
+  trash: {},           // /papierkorb – von Erstellern gelöschte Fragen (nur für Ersteller)
 };
 
 function readOwn() {
@@ -184,7 +186,18 @@ function sortedItems() {
       ? open.sort((a, b) => b.likes - a.likes || b.created - a.created)
       : open.sort((a, b) => b.created - a.created);
   }
+  if (state.tab === 'deleted') return trashItems();
   return state.questions.filter((q) => q.answered).sort((a, b) => b.answeredAt - a.answeredAt);
+}
+
+function trashItems() {
+  return Object.entries(state.trash)
+    .filter(([, v]) => v && typeof v.text === 'string')
+    .map(([id, v]) => ({
+      id, text: v.text, created: v.erstellt || 0, answered: !!v.beantwortet, answeredAt: v.beantwortetAm || 0,
+      likes: v.likes || 0, liked: false, own: false, deleted: true, deletedAt: v.geloeschtAm || 0,
+    }))
+    .sort((a, b) => b.deletedAt - a.deletedAt);
 }
 
 function render({ animate = false } = {}) {
@@ -192,6 +205,7 @@ function render({ animate = false } = {}) {
   const doneCount = state.questions.length - openCount;
   els.countOpen.textContent = openCount || '';
   els.countDone.textContent = doneCount || '';
+  els.countDeleted.textContent = Object.keys(state.trash).length || '';
   els.loading.hidden = true;
 
   const items = sortedItems();
@@ -238,6 +252,11 @@ function render({ animate = false } = {}) {
     els.emptyIcon.innerHTML = ICON.bubble;
     els.emptyTitle.textContent = 'Keine offenen Fragen';
     els.emptyText.textContent = doneCount ? 'Alle Fragen sind beantwortet. Stell gern eine neue!' : 'Stell die erste Frage.';
+  } else if (state.tab === 'deleted') {
+    els.sectionHeader.textContent = n ? `${n} gelöscht · zuletzt gelöscht zuerst` : '';
+    els.emptyIcon.innerHTML = ICON.trash;
+    els.emptyTitle.textContent = 'Nichts gelöscht';
+    els.emptyText.textContent = 'Fragen, die ein Ersteller löscht, erscheinen hier und lassen sich wiederherstellen.';
   } else {
     els.sectionHeader.textContent = n ? `${n} beantwortet · zuletzt beantwortet zuerst` : '';
     els.emptyIcon.innerHTML = ICON.done;
@@ -266,6 +285,25 @@ function createCell(id) {
 
 function updateCell(el, q) {
   el.querySelector('.q-text').textContent = q.text;
+  el.classList.toggle('deleted', !!q.deleted);
+  if (q.deleted) {
+    const meta = el.querySelector('.q-meta');
+    const t = document.createElement('span');
+    t.textContent = 'gelöscht ' + relTime(q.deletedAt);
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'q-del q-restore';
+    back.textContent = 'Wiederherstellen';
+    back.addEventListener('click', (e) => { e.stopPropagation(); restoreQuestion(q.id); });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'q-del';
+    del.textContent = 'Endgültig löschen';
+    del.addEventListener('click', (e) => { e.stopPropagation(); purgeQuestion(q.id); });
+    meta.replaceChildren(t, back, del);
+    el.classList.remove('answered');
+    return;
+  }
 
   const meta = el.querySelector('.q-meta');
   meta.replaceChildren();
@@ -307,6 +345,7 @@ function updateCell(el, q) {
 }
 
 function refreshTimes() {
+  if (state.tab === 'deleted') { render(); return; }
   for (const [id, el] of nodes) { const q = find(id); if (q) updateCell(el, q); }
 }
 setInterval(refreshTimes, 30000);
@@ -323,7 +362,7 @@ function highlight(id) {
 function setTab(tab) {
   if (state.tab === tab) return;
   state.tab = tab;
-  els.segmented.dataset.index = tab === 'open' ? '0' : '1';
+  els.segmented.dataset.index = String(['open', 'answered', 'deleted'].indexOf(tab));
   for (const b of els.segmented.querySelectorAll('button')) b.setAttribute('aria-selected', String(b.dataset.tab === tab));
   render();
 }
@@ -479,6 +518,9 @@ function applyAdmin() {
   els.adminBanner.hidden = !isAdmin();
   els.adminBtn.textContent = isGoogle() ? 'Abmelden' : 'Erstellerzugang';
   els.inboxBtn.hidden = !isAdmin();
+  els.segDeleted.hidden = !isAdmin();
+  els.segmented.classList.toggle('three', isAdmin());
+  if (!isAdmin() && state.tab === 'deleted') setTab('open');
   refreshTimes(); // Löschen-Knöpfe ein-/ausblenden
   watchRequests();
 }
@@ -503,13 +545,17 @@ function watchRequests() {
         () => { state.requests = []; updateBadge(); }),
       onValue(ref(db, 'gesperrt'), (snap) => { state.blocked = toList(snap.val()); updateBadge(); },
         () => { state.blocked = []; updateBadge(); }),
+      onValue(ref(db, 'papierkorb'), (snap) => { state.trash = snap.val() || {}; render({ animate: state.tab === 'deleted' }); },
+        () => { state.trash = {}; render(); }),
     ];
   } else if (!isAdmin() && unsubAdminLists.length) {
     for (const u of unsubAdminLists) u();
     unsubAdminLists = [];
     state.requests = [];
     state.blocked = [];
+    state.trash = {};
     updateBadge();
+    render();
   }
 }
 
@@ -679,11 +725,37 @@ async function setAnswered(id, answered) {
 async function deleteQuestion(id) {
   await leaveAnimation(id);
   try {
-    const p = update(ref(db), { [`fragen/${id}`]: null, [`autoren/${id}`]: null });
-    await p;
+    const v = state.raw[id];
+    if (isAdmin() && v) {
+      // In den Papierkorb; autoren/{id} bleibt, damit der Fragende nach dem Wiederherstellen weiter löschen kann.
+      await update(ref(db), { [`fragen/${id}`]: null, [`papierkorb/${id}`]: { ...v, geloeschtAm: serverTimestamp() } });
+    } else {
+      await update(ref(db), { [`fragen/${id}`]: null, [`autoren/${id}`]: null });
+    }
   } catch (err) {
     if (isAdmin()) adminError(err, 'Nicht gelöscht');
     else showAlert('Nicht gelöscht', denied(err) ? 'Diese Frage kannst du nicht löschen.' : errorText(err));
+  }
+}
+
+async function restoreQuestion(id) {
+  const v = state.trash[id];
+  if (!v) return;
+  const { geloeschtAm, ...q } = v;
+  await leaveAnimation(id);
+  try {
+    await update(ref(db), { [`fragen/${id}`]: q, [`papierkorb/${id}`]: null });
+  } catch (err) {
+    adminError(err, 'Nicht wiederhergestellt');
+  }
+}
+
+async function purgeQuestion(id) {
+  await leaveAnimation(id);
+  try {
+    await update(ref(db), { [`papierkorb/${id}`]: null, [`autoren/${id}`]: null });
+  } catch (err) {
+    adminError(err, 'Nicht gelöscht');
   }
 }
 

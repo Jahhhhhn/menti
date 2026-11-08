@@ -206,6 +206,9 @@ main {
   transition: transform .3s var(--ease);
 }
 .segmented[data-index="1"] .seg-thumb { transform: translateX(100%); }
+.segmented[data-index="2"] .seg-thumb { transform: translateX(200%); }
+.segmented.three { grid-template-columns: 1fr 1fr 1fr; }
+.segmented.three .seg-thumb { width: calc((100% - 4px) / 3); }
 .segmented button {
   position: relative;
   z-index: 1;
@@ -317,6 +320,10 @@ body.admin .cell + .cell::before { left: 54px; } /* bündig mit dem Text hinter 
   font: inherit;
 }
 .q-del:active { opacity: .35; }
+.q-restore { color: var(--blue); font-weight: 500; }
+/* Papierkorb: kein Abhaken, kein Liken */
+.cell.deleted .like, body.admin .cell.deleted .check { display: none; }
+.cell.deleted .q-text { color: var(--label2); }
 .tag-done { color: var(--green); font-weight: 500; display: inline-flex; align-items: center; gap: 3px; }
 .tag-done svg { width: 14px; height: 14px; }
 

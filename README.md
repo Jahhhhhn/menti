@@ -31,6 +31,8 @@ Gestaltet nach den Apple Human Interface Guidelines (Systemschrift, Systemfarben
 - Entziehen: Firebase-Konsole → Realtime Database → Daten → `ersteller` → Eintrag löschen.
 - Im Ersteller-Modus: Kreis links tippen = beantwortet / wieder offen; „Löschen“ bei jeder Frage (sofort, ohne Rückfrage).
 - Besucher können ihre **eigenen Fragen** löschen („Löschen“ neben „Deine Frage“).
+- Von Erstellern gelöschte Fragen landen im Reiter **Gelöscht** (`papierkorb/`, nur für Ersteller sichtbar) und
+  lassen sich dort **wiederherstellen** oder **endgültig löschen**. Selbst gelöschte Fragen sind sofort weg.
 
 ## Daten & Anonymität
 
