@@ -23,8 +23,11 @@ Gestaltet nach den Apple Human Interface Guidelines (Systemschrift, Systemfarben
 - Oben links „Erstellerzugang“ → Anmeldung mit Google.
 - Noch nicht freigeschaltete Konten schicken damit automatisch eine **Anfrage** (Name + E-Mail) und werden
   gleich wieder abgemeldet.
-- Ersteller sehen oben rechts das **Postfach** (rote Zahl = offene Anfragen) und können dort
-  **akzeptieren** oder **ablehnen**. Akzeptierte Konten stehen unter `ersteller/{kennung}`.
+- Ersteller sehen oben rechts das **Postfach** (rote Zahl = offene Anfragen):
+  - Reiter **Anfragen**: **Akzeptieren** oder **Ablehnen** (dabei wahlweise „Ablehnen und sperren“).
+    Akzeptierte Konten stehen unter `ersteller/{kennung}`.
+  - Reiter **Gesperrt**: gesperrte Konten (`gesperrt/{kennung}`) mit **Entsperren**. Gesperrte Konten können
+    keine Anfragen stellen.
 - Entziehen: Firebase-Konsole → Realtime Database → Daten → `ersteller` → Eintrag löschen.
 - Im Ersteller-Modus: Kreis links tippen = beantwortet / wieder offen; Frage tippen = Menü mit „Löschen“.
 
@@ -37,7 +40,7 @@ Gestaltet nach den Apple Human Interface Guidelines (Systemschrift, Systemfarben
 - „Deine Frage“ merkt sich nur der eigene Browser.
 - Die Regeln sorgen dafür: höchstens eine Frage alle 5 s pro Gerät, ein Like pro Gerät und Frage, Fragen
   lassen sich nachträglich nicht ändern; beantworten und löschen dürfen nur Ersteller.
-- `anfragen/{kennung}` (E-Mail der Anfragenden) können nur Ersteller lesen.
+- `anfragen/` und `gesperrt/` (E-Mail-Adressen) können nur Ersteller lesen.
 - Doppelte offene Fragen und die 300-Zeichen-Grenze prüft die Website.
 
 ## Lokal testen

@@ -54,6 +54,7 @@ const state = {
   sending: false,
   lastSent: 0,
   requests: [],        // offene Anfragen für den Erstellerzugang (nur für Ersteller)
+  blocked: [],         // gesperrte Konten (nur für Ersteller)
 };
 
 function readOwn() {
@@ -478,24 +479,32 @@ function applyAdmin() {
   watchRequests();
 }
 
-// ---------------------------------------------------------------- Postfach (Anfragen)
+// ---------------------------------------------------------------- Postfach (Anfragen, Gesperrt)
 
-let unsubRequests = null;
+let unsubAdminLists = [];
 let renderInbox = null; // gesetzt, solange das Postfach offen ist
 
+/** /anfragen bzw. /gesperrt → sortierte Liste */
+function toList(val) {
+  return Object.entries(val || {})
+    .filter(([, v]) => v && typeof v.email === 'string')
+    .map(([uid, v]) => ({ uid, email: v.email, name: v.name || '', time: v.zeit || 0 }))
+    .sort((a, b) => b.time - a.time);
+}
+
 function watchRequests() {
-  if (isAdmin() && !unsubRequests) {
-    unsubRequests = onValue(ref(db, 'anfragen'), (snap) => {
-      state.requests = Object.entries(snap.val() || {})
-        .filter(([, v]) => v && typeof v.email === 'string')
-        .map(([uid, v]) => ({ uid, email: v.email, name: v.name || '', time: v.zeit || 0 }))
-        .sort((a, b) => b.time - a.time);
-      updateBadge();
-    }, () => { state.requests = []; updateBadge(); });
-  } else if (!isAdmin() && unsubRequests) {
-    unsubRequests();
-    unsubRequests = null;
+  if (isAdmin() && !unsubAdminLists.length) {
+    unsubAdminLists = [
+      onValue(ref(db, 'anfragen'), (snap) => { state.requests = toList(snap.val()); updateBadge(); },
+        () => { state.requests = []; updateBadge(); }),
+      onValue(ref(db, 'gesperrt'), (snap) => { state.blocked = toList(snap.val()); updateBadge(); },
+        () => { state.blocked = []; updateBadge(); }),
+    ];
+  } else if (!isAdmin() && unsubAdminLists.length) {
+    for (const u of unsubAdminLists) u();
+    unsubAdminLists = [];
     state.requests = [];
+    state.blocked = [];
     updateBadge();
   }
 }
@@ -510,75 +519,131 @@ function updateBadge() {
 
 els.inboxBtn.addEventListener('click', openInbox);
 
+function pill(label, cls, aria, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'pill ' + cls;
+  b.textContent = label;
+  b.setAttribute('aria-label', aria);
+  b.addEventListener('click', () => onClick(b));
+  return b;
+}
+
+function personRow(r, timeLabel, buttons) {
+  const row = document.createElement('div');
+  row.className = 'req';
+  const main = document.createElement('div');
+  main.className = 'req-main';
+  const name = document.createElement('p');
+  name.className = 'req-name';
+  name.textContent = r.name || r.email;
+  const mail = document.createElement('p');
+  mail.className = 'req-mail';
+  mail.textContent = (r.name ? r.email + ' · ' : '') + timeLabel;
+  main.append(name, mail);
+  const actions = document.createElement('div');
+  actions.className = 'req-actions';
+  actions.append(...buttons);
+  row.append(main, actions);
+  return row;
+}
+
 function openInbox() {
+  let tab = 'requests';
   const o = overlay('form-overlay');
   o.innerHTML = `
     <div class="form-sheet" role="dialog" aria-modal="true" aria-labelledby="inboxTitle">
       <div class="grabber" aria-hidden="true"></div>
       <div class="sheet-bar">
         <span></span>
-        <span class="sheet-title" id="inboxTitle">Anfragen</span>
+        <span class="sheet-title" id="inboxTitle">Postfach</span>
         <button class="nav-btn" type="button" data-done>Fertig</button>
       </div>
+      <div class="segmented sheet-seg" role="tablist" data-index="0">
+        <span class="seg-thumb" aria-hidden="true"></span>
+        <button type="button" role="tab" aria-selected="true" data-tab="requests">Anfragen<span class="seg-count"></span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="blocked">Gesperrt<span class="seg-count"></span></button>
+      </div>
       <div class="req-list" aria-live="polite"></div>
-      <p class="req-empty" hidden>Keine offenen Anfragen.</p>
-      <p class="form-footer">Wer sich über „Erstellerzugang“ mit Google anmeldet, landet hier. Akzeptierte Konten
-        können Fragen beantworten und löschen – und selbst Anfragen annehmen.</p>
+      <p class="req-empty" hidden></p>
+      <p class="form-footer"></p>
     </div>`;
+  const seg = o.querySelector('.segmented');
+  const counts = seg.querySelectorAll('.seg-count');
   const list = o.querySelector('.req-list');
   const empty = o.querySelector('.req-empty');
+  const footer = o.querySelector('.form-footer');
   const close = trapOverlay(o, () => done());
   const done = () => { renderInbox = null; close(); };
   o.querySelector('[data-done]').addEventListener('click', done);
+  for (const b of seg.querySelectorAll('button')) {
+    b.addEventListener('click', () => {
+      tab = b.dataset.tab;
+      seg.dataset.index = tab === 'requests' ? '0' : '1';
+      for (const x of seg.querySelectorAll('button')) x.setAttribute('aria-selected', String(x === b));
+      renderInbox();
+    });
+  }
 
   renderInbox = () => {
-    empty.hidden = state.requests.length > 0;
-    list.replaceChildren(...state.requests.map((r) => {
-      const row = document.createElement('div');
-      row.className = 'req';
-      const main = document.createElement('div');
-      main.className = 'req-main';
-      const name = document.createElement('p');
-      name.className = 'req-name';
-      name.textContent = r.name || r.email;
-      const mail = document.createElement('p');
-      mail.className = 'req-mail';
-      mail.textContent = (r.name ? r.email + ' · ' : '') + relTime(r.time);
-      main.append(name, mail);
-      const actions = document.createElement('div');
-      actions.className = 'req-actions';
-      const no = document.createElement('button');
-      no.type = 'button';
-      no.className = 'pill reject';
-      no.textContent = 'Ablehnen';
-      no.setAttribute('aria-label', `${r.email} ablehnen`);
-      const yes = document.createElement('button');
-      yes.type = 'button';
-      yes.className = 'pill accept';
-      yes.textContent = 'Akzeptieren';
-      yes.setAttribute('aria-label', `${r.email} akzeptieren`);
-      no.addEventListener('click', () => decide(r, false, [no, yes]));
-      yes.addEventListener('click', () => decide(r, true, [no, yes]));
-      actions.append(no, yes);
-      row.append(main, actions);
-      return row;
-    }));
+    counts[0].textContent = state.requests.length || '';
+    counts[1].textContent = state.blocked.length || '';
+    if (tab === 'requests') {
+      list.replaceChildren(...state.requests.map((r) => personRow(r, relTime(r.time), [
+        pill('Ablehnen', 'reject', `${r.email} ablehnen`, () => rejectRequest(r)),
+        pill('Akzeptieren', 'accept', `${r.email} akzeptieren`, (b) => acceptRequest(r, b)),
+      ])));
+      empty.textContent = 'Keine offenen Anfragen.';
+      empty.hidden = state.requests.length > 0;
+      footer.textContent = 'Wer sich über „Erstellerzugang“ mit Google anmeldet, landet hier. Akzeptierte Konten '
+        + 'können Fragen beantworten und löschen – und selbst Anfragen annehmen.';
+    } else {
+      list.replaceChildren(...state.blocked.map((r) => personRow(r, 'gesperrt ' + relTime(r.time), [
+        pill('Entsperren', '', `${r.email} entsperren`, (b) => unblock(r, b)),
+      ])));
+      empty.textContent = 'Keine gesperrten Konten.';
+      empty.hidden = state.blocked.length > 0;
+      footer.textContent = 'Gesperrte Konten können keine Anfragen mehr stellen. Nach dem Entsperren geht es wieder.';
+    }
   };
   renderInbox();
   setTimeout(() => o.querySelector('[data-done]').focus({ preventScroll: true }), 60);
 }
 
-async function decide(r, accept, buttons) {
-  for (const b of buttons) b.disabled = true;
+async function adminWrite(changes, okText, errTitle, button) {
+  if (button) button.disabled = true;
   try {
-    await update(ref(db), accept
-      ? { [`ersteller/${r.uid}`]: r.email, [`anfragen/${r.uid}`]: null }
-      : { [`anfragen/${r.uid}`]: null });
-    hud(accept ? 'Freigeschaltet' : 'Abgelehnt');
+    await update(ref(db), changes);
+    hud(okText);
   } catch (err) {
-    for (const b of buttons) b.disabled = false;
-    adminError(err, accept ? 'Nicht freigeschaltet' : 'Nicht abgelehnt');
+    if (button) button.disabled = false;
+    adminError(err, errTitle);
   }
+}
+
+function acceptRequest(r, button) {
+  adminWrite({ [`ersteller/${r.uid}`]: r.email, [`anfragen/${r.uid}`]: null }, 'Freigeschaltet', 'Nicht freigeschaltet', button);
+}
+
+async function rejectRequest(r) {
+  const v = await actionSheet({
+    title: r.name ? `${r.name} (${r.email})` : r.email,
+    message: 'Beim Sperren kann dieses Konto keine neuen Anfragen mehr stellen.',
+    actions: [
+      { label: 'Nur ablehnen', value: 'reject' },
+      { label: 'Ablehnen und sperren', value: 'block', destructive: true },
+    ],
+  });
+  if (v === 'reject') adminWrite({ [`anfragen/${r.uid}`]: null }, 'Abgelehnt', 'Nicht abgelehnt');
+  if (v === 'block') {
+    const entry = { email: r.email, zeit: serverTimestamp() };
+    if (r.name) entry.name = r.name;
+    adminWrite({ [`gesperrt/${r.uid}`]: entry, [`anfragen/${r.uid}`]: null }, 'Gesperrt', 'Nicht gesperrt');
+  }
+}
+
+function unblock(r, button) {
+  adminWrite({ [`gesperrt/${r.uid}`]: null }, 'Entsperrt', 'Nicht entsperrt', button);
 }
 
 async function logout() {
@@ -683,8 +748,14 @@ async function login() {
   } catch {
     sent = false;
   }
+  let blocked = false;
+  if (!sent) {
+    try { blocked = (await get(ref(db, 'gesperrt/' + user.uid))).exists(); } catch { /* unbekannt */ }
+  }
   await signOut(auth).catch(() => {});
-  if (sent) {
+  if (blocked) {
+    showAlert('Keine Anfrage möglich', 'Dieses Konto kann keine Anfragen für den Erstellerzugang stellen.');
+  } else if (sent) {
     showAlert('Anfrage gesendet', `Ein Ersteller kann ${user.email || 'dein Konto'} jetzt freischalten. Melde dich danach einfach noch einmal an.`);
   } else {
     showAlert('Anfrage nicht gesendet', 'Bitte versuch es noch einmal.');

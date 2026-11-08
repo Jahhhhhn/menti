@@ -708,6 +708,7 @@ body.admin .cell:active { background: var(--cell-pressed); }
 .form-footer.error { color: var(--red); }
 
 /* Postfach: Anfragen für den Erstellerzugang */
+.sheet-seg { margin: 4px 16px 12px; }
 .req-list {
   margin: 4px 16px 0;
   max-height: min(60vh, 520px);

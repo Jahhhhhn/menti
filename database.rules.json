@@ -52,10 +52,30 @@
     "anfragen": {
       ".read": "auth != null && root.child('ersteller').child(auth.uid).exists()",
       "$uid": {
-        ".write": "auth != null && ((auth.uid === $uid && auth.token.firebase.sign_in_provider === 'google.com') || (root.child('ersteller').child(auth.uid).exists() && !newData.exists()))",
+        ".write": "auth != null && ((auth.uid === $uid && auth.token.firebase.sign_in_provider === 'google.com' && !root.child('gesperrt').child($uid).exists()) || (root.child('ersteller').child(auth.uid).exists() && !newData.exists()))",
         ".validate": "newData.hasChildren(['email', 'zeit'])",
         "email": {
           ".validate": "newData.isString() && newData.val() === auth.token.email"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "zeit": {
+          ".validate": "newData.val() === now"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "gesperrt": {
+      ".read": "auth != null && root.child('ersteller').child(auth.uid).exists()",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && root.child('ersteller').child(auth.uid).exists()",
+        ".validate": "newData.hasChildren(['email', 'zeit'])",
+        "email": {
+          ".validate": "newData.isString() && newData.val().length <= 320"
         },
         "name": {
           ".validate": "newData.isString() && newData.val().length <= 100"
