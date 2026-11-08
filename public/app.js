@@ -69,6 +69,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const find = (id) => state.questions.find((q) => q.id === id);
 const isAdmin = () => state.admin;
 const isGoogle = () => !!state.user && !state.user.isAnonymous;
+const codeOf = (err) => String((err && (err.code || err.message)) || 'unbekannt');
 const denied = (err) => /permission[_ -]denied/i.test(String(err && (err.code || err.message)));
 
 function errorText(err) {
@@ -126,8 +127,8 @@ onAuthStateChanged(auth, async (user) => {
   applyAdmin();
   if (state.loaded) liveUpdate();
   if (!user) {
-    signInAnonymously(auth).catch(() => {
-      showAlert('Anmeldung fehlgeschlagen', 'Liken und Fragen sind gerade nicht möglich. Bitte lade die Seite neu.');
+    signInAnonymously(auth).catch((err) => {
+      showAlert('Verbindung fehlgeschlagen', `Liken und Fragen sind gerade nicht möglich. Bitte lade die Seite neu. (${codeOf(err)})`);
     });
     return;
   }
@@ -554,7 +555,7 @@ async function login() {
         ? 'Diese Adresse ist in Firebase nicht als Domain erlaubt.'
         : code.includes('operation-not-allowed')
           ? 'Die Google-Anmeldung ist in Firebase noch nicht eingeschaltet.'
-          : errorText(err));
+          : `${errorText(err)} (${code})`);
     return;
   }
   const ok = await checkAdmin(user);
