@@ -136,15 +136,26 @@ onAuthStateChanged(auth, async (user) => {
     if (state.loaded) liveUpdate();
   }, () => {});
   if (!user.isAnonymous) {
-    state.admin = await checkAdmin(user);
+    state.admin = (await checkAdmin(user)) === true;
     if (state.user !== user) return;
     applyAdmin();
     refreshTimes();
   }
 });
 
+/** true/false = Ergebnis; null = Prüfung fehlgeschlagen. Direkt nach der Anmeldung hat die Datenbank-
+    Verbindung evtl. noch das alte (anonyme) Token – dann wird abgelehnt, also kurz warten und erneut fragen. */
 async function checkAdmin(user) {
-  try { return (await get(ref(db, 'ersteller/' + user.uid))).exists(); } catch { return false; }
+  for (let i = 0; i < 6; i++) {
+    try {
+      await user.getIdToken();
+      return (await get(ref(db, 'ersteller/' + user.uid))).exists();
+    } catch {
+      if (auth.currentUser !== user) return false;
+      await sleep(300 * (i + 1));
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- Darstellung
@@ -470,7 +481,7 @@ async function logout() {
 
 async function adminError(err, title) {
   if (denied(err) && state.user) {
-    state.admin = await checkAdmin(state.user);
+    state.admin = (await checkAdmin(state.user)) === true;
     applyAdmin();
     showAlert(title, state.admin ? 'Die Frage gibt es nicht mehr.' : 'Dein Konto ist nicht (mehr) als Ersteller freigeschaltet.');
   } else {
@@ -546,9 +557,15 @@ async function login() {
           : errorText(err));
     return;
   }
-  if (await checkAdmin(user)) {
+  const ok = await checkAdmin(user);
+  if (ok) {
     hud('Angemeldet');
     return; // onAuthStateChanged schaltet den Ersteller-Modus ein
+  }
+  if (ok === null) {
+    await signOut(auth).catch(() => {});
+    showAlert('Prüfung fehlgeschlagen', 'Ob dein Konto freigeschaltet ist, ließ sich gerade nicht prüfen. Bitte versuch es noch einmal.');
+    return;
   }
   // Nicht freigeschaltet: Kennung zeigen und sofort wieder abmelden (Besucher bleiben anonym).
   const uid = user.uid;
