@@ -698,7 +698,9 @@ async function adminError(err, title) {
   if (denied(err) && state.user) {
     state.admin = (await checkAdmin(state.user)) === true;
     applyAdmin();
-    showAlert(title, state.admin ? 'Die Frage gibt es nicht mehr.' : 'Dein Konto ist nicht (mehr) als Ersteller freigeschaltet.');
+    showAlert(title, state.admin
+      ? 'Firebase hat das abgelehnt. Sind die aktuellen Regeln aus database.rules.json in Firebase veröffentlicht?'
+      : 'Dein Konto ist nicht (mehr) als Ersteller freigeschaltet.');
   } else {
     showAlert(title, errorText(err));
   }
