@@ -26,7 +26,6 @@
   --material-pressed: rgba(0, 0, 0, .08);
   --dim: rgba(0, 0, 0, .3);
   --hud: rgba(242, 242, 247, .82);
-  --photo-tint: rgba(242, 242, 247, .7);  /* Schleier über dem Hintergrundfoto */
   --ease: cubic-bezier(.25, .9, .3, 1);
 }
 
@@ -55,7 +54,6 @@
     --material-pressed: rgba(255, 255, 255, .1);
     --dim: rgba(0, 0, 0, .5);
     --hud: rgba(44, 44, 46, .85);
-    --photo-tint: rgba(0, 0, 0, .62);
   }
 }
 
@@ -79,18 +77,6 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Hintergrundfoto: steht fest, ein Schleier hält Texte lesbar */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(var(--photo-tint), var(--photo-tint)),
-    url("hintergrund.jpg") center 35% / cover no-repeat;
-  pointer-events: none;
-}
-
 button, textarea, input { font: inherit; letter-spacing: inherit; color: inherit; }
 button { cursor: pointer; -webkit-user-select: none; user-select: none; }
 button:disabled { cursor: default; }
@@ -105,7 +91,7 @@ button:disabled { cursor: default; }
   top: 0;
   z-index: 20;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
-  background: transparent;
+  background: var(--bg);
   transition: background-color .25s;
 }
 .navbar::after {
